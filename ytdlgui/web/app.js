@@ -451,7 +451,7 @@ function pumpLinkInfo() {
     linkInfoBusy++;
     call('link_info', url).then(
       r => LINKINFO.set(url, !r || r.need ? { state: 'none' }   // yt-dlp absent : relu après installation
-        : r.error ? { state: 'error', error: r.error } : { state: 'done', info: r }),
+        : r.error ? { state: 'error', error: r.error, hint: r.hint } : { state: 'done', info: r }),
       () => LINKINFO.set(url, { state: 'error' }),
     ).finally(() => { linkInfoBusy--; refreshLinkRows(url); pumpLinkInfo(); });
   }
@@ -507,6 +507,8 @@ function linkRow(url, i) {
   if (info.uploader) meta.push(info.uploader);
   if (hostOf(url)) meta.push(hostOf(url));
   const status = st.state === 'busy' ? h('span', { class: 'link__status is-loading' }, T('dl.link.loading'))
+    : st.state === 'error' && st.hint ? h('button', { class: 'link__status is-error link__hint', type: 'button', title: T('hint.why'),
+        onclick: () => openHint(st.hint, st.error, { manual: true }) }, icon('info'), hintText(st.hint).title)
     : st.state === 'error' ? h('span', { class: 'link__status is-error', title: st.error || '' }, T('dl.link.error'))
     : null;
 
@@ -1014,6 +1016,10 @@ const PAGES = [
     { title: 'upd.section', fields: [
       { type: 'appversion' },
       { type: 'toggle', name: 'update_check', label: 'upd.auto', tip: 'upd.auto.tip' },
+      { type: 'actions', buttons: [{ ic: 'refresh', label: 'adv.hintsreset', fn: () => {
+        setSetting('hints_muted', '');
+        toast(T('msg.hintsreset'), 'ok');
+      } }] },
       { type: 'shortcut', kind: 'menu' },
       { type: 'shortcut', kind: 'desktop' }] },
   ] },
@@ -1457,7 +1463,9 @@ async function openAnalyze(url) {
   if (!r) return;
   if (r.need === 'ytdlp') { m.close(); return openInstall(['ytdlp']); }
   if (!r.info) {
-    holder.replaceChildren(h('div', null, h('p', { class: 'dialog__msg' }, T('an.failed')), h('pre', { class: 'out' }, r.error || T('an.nodata'))));
+    holder.replaceChildren(h('div', null, h('p', { class: 'dialog__msg' }, T('an.failed')),
+      r.hint ? hintBox(r.hint, () => m.close()) : null,
+      h('pre', { class: 'out' }, r.hint ? errorDetail(r.error) : r.error || T('an.nodata'))));
     return;
   }
   if (r.info.type === 'playlist') renderPlaylistAnalysis(r.info, holder);
@@ -1669,7 +1677,8 @@ async function openEditor({ url, jobId = null, clip = null, fromDraft = false })
   if (r.error_key || r.error) {
     body.replaceWith(h('div', { class: 'ed-fail' },
       h('p', { class: 'dialog__msg' }, r.error_key ? T(r.error_key) : T('an.failed')),
-      r.error ? h('pre', { class: 'out' }, r.error) : null));
+      r.hint ? hintBox(r.hint, () => ed.m.close()) : null,
+      r.error ? h('pre', { class: 'out' }, r.hint ? errorDetail(r.error) : r.error) : null));
     return;
   }
   Object.assign(ed, { sid: r.sid, info: r.info, sb: r.storyboard, sources: r.sources, dur: r.info.duration || 0 });
@@ -2464,23 +2473,83 @@ function openShortcutPrompt() {
   });
 }
 
-// Conseil après une erreur de cookies (cf. RE_LOGIN et RE_COOKIE_LOCK dans app.py) : le site
-// exige une connexion (login_required), ou le navigateur ouvert bloque ses cookies
-// (cookies_locked). Une seule fenêtre à la fois, même si plusieurs tâches échouent.
-function openCookieHint(kind) {
-  if (S.cookieHint) return;
-  S.cookieHint = true;
+// ------------------------------------------------------------------ conseils d'erreur
+// Erreurs reconnues par ytdlgui/hints.py : ce qui s'est passé et, quand un réglage ou un
+// outil peut aider, un bouton qui y mène.
+const SITES_URL = 'https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md';
+const HINT_ACTIONS = {
+  network: { ic: 'globe', label: 'login.open', run: () => go('network') },
+  format: { ic: 'video', label: 'hint.act.format', run: () => go('format') },
+  ffmpeg: { ic: 'package', label: 'adv.dlffmpeg', run: () => openInstall(['ffmpeg']) },
+  deno: { ic: 'package', label: 'adv.dldeno', run: () => openInstall(['deno']) },
+  update: { ic: 'refresh', label: 'adv.update', run: () => updateYtdlp() },
+  dest: { ic: 'folderOpen', label: 'hint.act.dest', run: async () => {
+    const p = await call('browse', 'dest_dir', 'dir');   // enregistré par l'app
+    if (p) { S.settings.dest_dir = p; if (S.view === 'download') renderView(); else go('download'); }
+  } },
+  sites: { ic: 'external', label: 'hint.act.sites', run: () => call('open_url', SITES_URL) },
+};
+const HINT_ACTION_OF = {
+  login: 'network', cookies_locked: 'network', geo: 'network', rate_limit: 'network', network: 'network',
+  format: 'format', ffmpeg: 'ffmpeg', js_runtime: 'deno', outdated: 'update', disk_full: 'dest', unsupported: 'sites',
+};
+
+const actLabel = act => T(act.label, { format: L('tab.format') });
+function hintText(key) {
   const b = S.settings.cookies_browser;
-  const msg = kind === 'cookies_locked' ? T('lock.msg', { browser: b ? browserName(b) : '?', none: L('cb.none') })
-    : b ? T('login.msg.set', { browser: browserName(b) }) : T('login.msg');
+  if (key === 'login') return { title: T('login.title'), msg: b ? T('login.msg.set', { browser: browserName(b) }) : T('login.msg') };
+  if (key === 'cookies_locked') return { title: T('lock.title'), msg: T('lock.msg', { browser: b ? browserName(b) : '?', none: L('cb.none') }) };
+  // Les messages citent les réglages par leur libellé, pour rester justes dans chaque langue
+  return { title: T('hint.' + key + '.title'), msg: T('hint.' + key + '.msg', {
+    network: L('tab.network'), format: L('tab.format'), proxy: L('net.proxy'), geo: L('net.geo'), sleep: L('net.sleep') }) };
+}
+const mutedHints = () => (S.settings.hints_muted || '').split(',').filter(Boolean);
+// Lignes « ERROR: » de la sortie de yt-dlp, sans préfixe : le détail montré sous l'explication
+const errorDetail = text => {
+  const lines = String(text || '').split('\n').map(l => l.replace(/^\[[\w-]+\]\s*/, '').trim());
+  const errors = lines.filter(l => l.startsWith('ERROR:')).map(l => l.replace(/^ERROR:\s*/, ''));
+  return (errors.length ? errors : lines.filter(Boolean)).join('\n').slice(-600);
+};
+
+// Explication et bouton d'action, aussi intégrés aux fenêtres d'analyse et de l'éditeur.
+// `leave` ferme la fenêtre qui les contient avant de lancer l'action.
+function hintBox(key, leave) {
+  const t = hintText(key), act = HINT_ACTIONS[HINT_ACTION_OF[key]];
+  return h('div', { class: 'hint-box' }, h('strong', null, t.title), h('p', null, t.msg),
+    act ? h('button', { class: 'btn btn--sm', type: 'button', onclick: () => { leave(); act.run(); } }, icon(act.ic), actLabel(act)) : null);
+}
+
+// Fenêtre de conseil. Après un téléchargement en échec, la case « Ne plus afficher » est
+// proposée ; ouverte à la demande (clic sur un lien en erreur), elle ne l'est pas.
+function openHint(key, detail, { manual = false, onDone } = {}) {
+  const t = hintText(key), act = HINT_ACTIONS[HINT_ACTION_OF[key]];
+  const mute = manual ? null : h('input', { type: 'checkbox', id: 'hint-mute' });
+  detail = errorDetail(detail);
   const m = modal({
-    title: T(kind === 'cookies_locked' ? 'lock.title' : 'login.title'), ic: 'cookie', kind: 'warn',
-    body: h('p', { class: 'dialog__msg' }, msg),
-    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, T('dlg.ok')),
-      h('button', { class: 'btn btn--primary', type: 'button', onclick: () => { m.close(); go('network'); } },
-        icon('cookie'), T('login.open'))],
-    onClose: () => { S.cookieHint = false; },
+    title: t.title, ic: 'alert', kind: 'warn',
+    body: [h('p', { class: 'dialog__msg' }, t.msg),
+      detail ? h('pre', { class: 'out' }, detail) : null,
+      mute ? h('label', { class: 'sc-opt hint-mute', for: 'hint-mute' }, mute, h('span', null, T('hint.mute'))) : null],
+    foot: [h('button', { class: 'btn' + (act ? '' : ' btn--primary'), type: 'button', onclick: () => m.close() }, T('dlg.ok')),
+      act ? h('button', { class: 'btn btn--primary', type: 'button', onclick: () => { m.close(); act.run(); } }, icon(act.ic), actLabel(act)) : null],
+    onClose: () => {
+      if (mute && mute.checked && !mutedHints().includes(key)) setSetting('hints_muted', [...mutedHints(), key].join(','));
+      if (onDone) onDone();
+    },
   });
+}
+
+// Après les téléchargements : une fenêtre par type d'erreur jusqu'à la fin de la file (une
+// playlist aux vidéos supprimées n'en ouvre qu'une), l'une après l'autre, sauf si masquée.
+const hintQueue = [], hintSeen = new Set();
+function queueHint(key, detail) {
+  if (hintSeen.has(key) || mutedHints().includes(key)) return;
+  hintSeen.add(key);
+  hintQueue.push([key, detail]);
+  if (hintQueue.length === 1) showNextHint();
+}
+function showNextHint() {
+  if (hintQueue.length) showWhenFree(() => openHint(...hintQueue[0], { onDone: () => { hintQueue.shift(); showNextHint(); } }));
 }
 
 function showWhenFree(fn) {   // attend qu'aucune autre fenêtre ne soit ouverte
@@ -2727,9 +2796,10 @@ function onEvent(ev) {
     case 'queue_done':
       if (ev.errors) toast(T('msg.queueerrors', { n: ev.errors }), 'bad', 6000);
       else toast(T('msg.queuedone'), 'ok', 5000);
+      hintSeen.clear();   // la prochaine file pourra de nouveau ouvrir chaque conseil
       break;
-    case 'login_required': case 'cookies_locked':
-      openCookieHint(ev.type);
+    case 'hint':
+      queueHint(ev.key, ev.detail);
       break;
     case 'preview_progress': case 'preview_ready': case 'preview_failed': case 'preview_estimate':
       onPreviewEvent(ev);

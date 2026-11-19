@@ -490,6 +490,13 @@ button.chip--warn:hover { color: var(--warn); border-color: color-mix(in srgb, v
 .link__meta { font: 400 11.5px/1.2 var(--font-mono); color: var(--text-3); }
 .link__status.is-loading { color: var(--accent-ink); animation: link-pulse 1.4s var(--ease) infinite; }
 .link__status.is-error { color: var(--warn); }
+/* Lien en erreur reconnue : le statut devient un bouton qui ouvre l'explication */
+.link__hint { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.link__hint svg { width: 13px; height: 13px; }
+/* Conseil d'erreur dans les fenêtres d'analyse et de l'éditeur */
+.hint-box { display: grid; gap: var(--sp-2); justify-items: start; margin: var(--sp-3) 0; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md, 10px); background: color-mix(in srgb, var(--warn) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+.hint-box p { margin: 0; color: var(--text); }
+.hint-mute { margin-top: var(--sp-3); font-size: .92em; }
 @keyframes link-pulse { 50% { opacity: .35; } }
 .link__nocut { display: inline-flex; }
 @media (max-height: 700px) { .links { max-height: 108px; } }
