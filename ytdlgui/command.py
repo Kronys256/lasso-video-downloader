@@ -1,4 +1,5 @@
 """Construction de la ligne de commande yt-dlp à partir des réglages."""
+import os
 import re
 import shlex
 
@@ -69,6 +70,10 @@ def build_network_args(cfg):
     if proxy:
         args += ["--proxy", proxy]
     browser = cfg.get("cookies_browser", "").strip()
+    if browser == "operagx":
+        # yt-dlp ne connaît pas Opera GX par son nom, mais lit son dossier comme celui d'Opera
+        browser = "opera:" + os.path.join(os.environ.get("APPDATA", ""), "Opera Software", "Opera GX Stable") \
+            if os.name == "nt" else "opera"
     if browser and not browser.startswith("("):
         args += ["--cookies-from-browser", browser]
     elif cfg.get("cookies_file", "").strip():

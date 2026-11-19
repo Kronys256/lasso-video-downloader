@@ -25,8 +25,9 @@ import zipfile
 
 from .binaries import CREATE_NO_WINDOW, IS_WINDOWS, app_dir
 
-# Ancien nom du dépôt : MrGautier256/ytdl-interface (GitHub redirige vers le nouveau).
-REPO = "MrGautier256/lasso-video-downloader"
+# Anciennes adresses : MrGautier256/ytdl-interface puis MrGautier256/lasso-video-downloader
+# (GitHub redirige vers la nouvelle tant que l'ancien nom de compte reste libre).
+REPO = "Kronys256/lasso-video-downloader"
 # YTDL_UPDATE_URL remplace l'adresse de l'API (tests avec un faux serveur de releases).
 API_URL = os.environ.get("YTDL_UPDATE_URL") or "https://api.github.com/repos/%s/releases/latest" % REPO
 SUMS = "SHA256SUMS.txt"

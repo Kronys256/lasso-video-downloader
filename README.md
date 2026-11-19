@@ -100,8 +100,8 @@ On first launch, Lasso offers to add a shortcut to the Start menu (and so to Win
 
 Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
 
-- Committers and reviewers: [Gautier Mekhelian](https://github.com/MrGautier256)
-- Approvers: [Gautier Mekhelian](https://github.com/MrGautier256)
+- Committers and reviewers: [Gautier Mekhelian](https://github.com/Kronys256)
+- Approvers: [Gautier Mekhelian](https://github.com/Kronys256)
 
 The Windows version is built by GitHub Actions from this repository, and each signed version is approved by hand. Only `Lasso.exe` is signed by this project: the third-party libraries bundled in the archive (Python, pywebview, WebView2) and the tools downloaded on first launch (yt-dlp, FFmpeg, Deno) are not signed by this project.
 

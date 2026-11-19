@@ -100,8 +100,8 @@ Au premier lancement, Lasso propose d'ajouter un raccourci au menu Démarrer (et
 
 Signature du code gratuite fournie par [SignPath.io](https://about.signpath.io/), certificat de la [SignPath Foundation](https://signpath.org/).
 
-- Auteurs et relecteurs : [Gautier Mekhelian](https://github.com/MrGautier256)
-- Approbateurs : [Gautier Mekhelian](https://github.com/MrGautier256)
+- Auteurs et relecteurs : [Gautier Mekhelian](https://github.com/Kronys256)
+- Approbateurs : [Gautier Mekhelian](https://github.com/Kronys256)
 
 La version Windows est compilée par GitHub Actions à partir de ce dépôt, et chaque version signée est approuvée à la main. Seul `Lasso.exe` est signé par ce projet : les bibliothèques tierces incluses dans l'archive (Python, pywebview, WebView2) et les outils téléchargés au premier lancement (yt-dlp, FFmpeg, Deno) ne le sont pas par ce projet.
 
