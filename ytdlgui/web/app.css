@@ -194,7 +194,9 @@ input, textarea { caret-color: var(--accent-ink); }
 .brand { display: flex; align-items: center; gap: var(--sp-3); padding: 0 var(--sp-2) var(--sp-5); }
 .brand__mark { width: 34px; height: 34px; flex: none; color: var(--accent); }
 .brand__name { font: 700 23px/1 var(--font-display); letter-spacing: -.03em; }
-.brand__ver { display: block; margin-top: 7px; font: 400 11px/1 var(--font-mono); color: var(--text-3); letter-spacing: .02em; }
+.brand__ver { display: block; margin-top: 7px; padding: 0; border: 0; background: none; cursor: pointer; font: 400 11px/1 var(--font-mono); color: var(--text-3); letter-spacing: .02em; }
+/* Le numéro de version ouvre l'historique des versions */
+.brand__ver:hover { color: var(--accent-ink); text-decoration: underline dotted; text-underline-offset: 3px; }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav__group {
@@ -490,6 +492,13 @@ button.chip--warn:hover { color: var(--warn); border-color: color-mix(in srgb, v
 .link__meta { font: 400 11.5px/1.2 var(--font-mono); color: var(--text-3); }
 .link__status.is-loading { color: var(--accent-ink); animation: link-pulse 1.4s var(--ease) infinite; }
 .link__status.is-error { color: var(--warn); }
+/* Lien en erreur reconnue : le statut devient un bouton qui ouvre l'explication */
+.link__hint { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.link__hint svg { width: 13px; height: 13px; }
+/* Conseil d'erreur dans les fenêtres d'analyse et de l'éditeur */
+.hint-box { display: grid; gap: var(--sp-2); justify-items: start; margin: var(--sp-3) 0; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md, 10px); background: color-mix(in srgb, var(--warn) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+.hint-box p { margin: 0; color: var(--text); }
+.hint-mute { margin-top: var(--sp-3); font-size: .92em; }
 @keyframes link-pulse { 50% { opacity: .35; } }
 .link__nocut { display: inline-flex; }
 @media (max-height: 700px) { .links { max-height: 108px; } }
@@ -1030,6 +1039,14 @@ button.chip--warn:hover { color: var(--warn); border-color: color-mix(in srgb, v
 .upd__notes { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel-2); padding: var(--sp-3) var(--sp-4); }
 .upd__notes h3 { margin: 0 0 var(--sp-2); font: 650 11px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
 .upd__text { max-height: 220px; overflow: auto; white-space: pre-line; font-size: 13px; color: var(--text-2); user-select: text; -webkit-user-select: text; }
+/* Nouveautés après une mise à jour et historique des versions : une section par version */
+.dialog--news { width: min(640px, 100%); max-height: min(720px, calc(100vh - 48px)); }
+.dialog--news .dialog__body { overflow: auto; }
+.news { display: flex; flex-direction: column; gap: var(--sp-4); }
+.news__ver { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel-2); padding: var(--sp-3) var(--sp-4); }
+.news__ver h3 { display: flex; align-items: baseline; gap: var(--sp-3); margin: 0 0 var(--sp-2); font: 650 var(--fs-16, 15px)/1.2 var(--font-ui); color: var(--text); }
+.news__date { font: 400 12px/1 var(--font-ui); color: var(--text-3); }
+.news__text { white-space: pre-line; font-size: 13px; color: var(--text-2); user-select: text; -webkit-user-select: text; }
 .upd__manual { margin: 0; font-size: 12.5px; color: var(--warn); }
 .inst__tag {
   padding: 2px 7px; border-radius: var(--r-pill);

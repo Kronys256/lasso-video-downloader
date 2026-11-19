@@ -21,6 +21,7 @@ from . import __version__
 from . import clips
 from . import command as cmdmod
 from . import engine as eng
+from . import hints
 from . import i18n
 from . import journal
 from . import preview
@@ -63,11 +64,6 @@ UPDATE_INTERVAL = 20 * 3600   # vérification automatique : au plus une fois par
 DEFAULT_SIZE = (1100, 780)
 MIN_SIZE = (900, 640)
 LOG_KEEP = 5000
-# Erreur « connexion requise » de yt-dlp, quel que soit le site (Reddit, Instagram, YouTube
-# « not a bot » ou limite d'âge) : son conseil cite toujours --cookies.
-RE_LOGIN = re.compile(r"^ERROR: .*--cookies")
-# Navigateur basé sur Chromium encore ouvert : sous Windows, il verrouille sa base de cookies.
-RE_COOKIE_LOCK = re.compile(r"^ERROR: Could not copy Chrome cookie database")
 
 
 def default_settings(base_dir):
@@ -146,6 +142,7 @@ def default_settings(base_dir):
         "update_skip": "",        # version que l'utilisateur a choisi d'ignorer
         "deno_prompt": True,      # proposer Deno au démarrage s'il manque
         "shortcut_prompt": True,  # proposer le raccourci du menu Démarrer au démarrage
+        "hints_muted": "",        # conseils d'erreur à ne plus afficher (clés de hints.py, séparées par des virgules)
     }
 
 
@@ -207,12 +204,17 @@ class Api:
         self._maximized = bool(stored.get("_maximized", False))
         self._update_checked = float(stored.get("_update_checked") or 0)
         self._updated_to = str(stored.get("_updated_to") or "")
+        # Dernière version lancée, et version après laquelle montrer les nouveautés (gardée
+        # tant qu'elles n'ont pas pu être récupérées, hors ligne par exemple)
+        self._last_version = str(stored.get("_last_version") or "")
+        self._news_from = str(stored.get("_news_from") or "")
         i18n.set_lang(self._settings["ui_lang"])
 
         self._q = queue.Queue()
         self._engine = eng.Engine(self._q)
         self._events = []
         self._log = collections.deque(maxlen=LOG_KEEP)
+        self._hints = {}   # erreurs reconnues (ytdlgui/hints.py) par tâche en cours
         journal.write(["=== Lasso %s ===" % __version__])
         self._busy_binary = False
         self._force_close = False
@@ -281,6 +283,9 @@ class Api:
         data["_update_checked"] = self._update_checked
         if self._updated_to:
             data["_updated_to"] = self._updated_to
+        data["_last_version"] = self._last_version
+        if self._news_from:
+            data["_news_from"] = self._news_from
         save_settings(self._dir, data)
 
     def _push(self, event):
@@ -299,6 +304,15 @@ class Api:
             updated = __version__ if self._updated_to == __version__ else ""
             self._updated_to = ""
             self._save()
+        if self._last_version != __version__:
+            if self._last_version and updater.is_newer(__version__, self._last_version):
+                self._news_from = self._last_version
+            elif not self._last_version and updated:
+                self._news_from = "*"   # venu d'une version qui ne notait pas la sienne : celle-ci seule
+            self._last_version = __version__
+            self._save()
+        if self._news_from:
+            threading.Thread(target=self._fetch_news, daemon=True).start()
         self._auto_update_check()
         return {
             "version": __version__,
@@ -383,6 +397,28 @@ class Api:
                 self._update_busy = False
         threading.Thread(target=worker, daemon=True).start()
         return True
+
+    def _fetch_news(self):
+        """Nouveautés des versions installées depuis le dernier lancement, la plus récente
+        d'abord : la page les montre une fois."""
+        start = None if self._news_from == "*" else self._news_from
+        try:
+            versions = updater.release_notes(start, __version__)
+        except Exception:
+            return   # hors ligne : nouvel essai au prochain lancement
+        self._news_from = ""
+        self._save()
+        if versions:
+            self._push({"type": "whats_new", "versions": versions})
+
+    def version_history(self):
+        """Notes de toutes les versions depuis la 2.0.0 (fenêtre d'historique). Lancée depuis
+        les sources, l'application porte un numéro fixe : pas de limite haute."""
+        try:
+            return {"versions": updater.release_notes("2.0.0", __version__ if updater.frozen() else None,
+                                                       include_lowest=True)}
+        except Exception as exc:
+            return {"error": str(exc)}
 
     def update_restart(self):
         """Ferme l'application et laisse le script de mise à jour la remplacer et la relancer."""
@@ -758,7 +794,7 @@ class Api:
 
     # ---------------------------------------------------------- suivi (appelé en boucle par la page)
     def poll(self):
-        log, disk, dirty, finished, login, locked = [], [], False, False, False, False
+        log, disk, dirty, finished = [], [], False, False
         try:
             while len(log) < 2000:
                 event = self._q.get_nowait()
@@ -767,20 +803,25 @@ class Api:
                     disk.append("[%s] %s" % (event[1], event[2]))
                     if kind == "log":
                         log.append(disk[-1])
-                        login = login or bool(RE_LOGIN.match(event[2]))
-                        locked = locked or bool(RE_COOKIE_LOCK.match(event[2]))
+                        key = hints.classify(event[2])
+                        if key:
+                            # Première ligne de chaque erreur reconnue, montrée à la fin de la tâche
+                            self._hints.setdefault(event[1], {}).setdefault(key, event[2])
                 elif kind in ("status", "progress", "title"):
                     dirty = True
                 elif kind == "done":
                     dirty = finished = True
+                    found = self._hints.pop(event[1], {})
+                    job = self._engine.jobs.get(event[1])
+                    if event[2] not in (0, 101) and not (job and job.cancelled):
+                        for key, line in found.items():
+                            self._push({"type": "hint", "key": key, "detail": line})
         except queue.Empty:
             pass
         if log:
             self._log.extend(log)
         if disk:
             journal.write(disk)
-        if locked or login:
-            self._push({"type": "cookies_locked" if locked else "login_required"})
         if finished:
             self._check_queue_done()
         with self._lock:
@@ -881,7 +922,7 @@ class Api:
                                  encoding="utf-8", errors="replace", creationflags=CREATE_NO_WINDOW)
             if out.returncode == 0 and out.stdout.strip():
                 return {"info": _trim_info(jsonmod.loads(out.stdout))}
-            return {"error": (out.stderr or "").strip()[-800:] or T("an.nodata")}
+            return {"error": (out.stderr or "").strip()[-800:] or T("an.nodata"), "hint": hints.classify(out.stderr)}
         except Exception as exc:
             return {"error": str(exc)}
 
@@ -904,7 +945,7 @@ class Api:
         except Exception as exc:
             return {"error": str(exc)}
         if not isinstance(info, dict):
-            return {"error": (out.stderr or "").strip()[-400:] or T("an.nodata")}
+            return {"error": (out.stderr or "").strip()[-400:] or T("an.nodata"), "hint": hints.classify(out.stderr)}
         thumbs = [t.get("url") for t in info.get("thumbnails") or [] if t.get("url")]
         res = {"title": info.get("title"), "uploader": info.get("uploader") or info.get("channel"),
                "thumbnail": info.get("thumbnail") or (thumbs[-1] if thumbs else None)}

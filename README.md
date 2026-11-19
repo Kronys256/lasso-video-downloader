@@ -110,7 +110,7 @@ The Windows version is built by GitHub Actions from this repository, and each si
 Lasso sends no personal data and contains no analytics or telemetry. It only connects to:
 
 - **the sites of the videos** you ask it to analyze or download, including to show their thumbnails;
-- **GitHub**, to check at most once a day whether a new version of Lasso exists (can be turned off: *Check for updates at startup*, *Advanced* settings page, *Application* section), and to download yt-dlp, FFmpeg and Deno when you ask for them ([GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement));
+- **GitHub**, to check at most once a day whether a new version of Lasso exists (can be turned off: *Check for updates at startup*, *Advanced* settings page, *Application* section), to read the release notes once after an update and when you open the version history, and to download yt-dlp, FFmpeg and Deno when you ask for them ([GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement));
 - **SponsorBlock** (sponsor.ajay.app), through yt-dlp, only if you turn that option on in the *Files & metadata* settings page.
 
 Your browser's cookies are read, on your computer, only if you turn on *Use browser cookies* (*Network & accounts* page), and are only sent to the site of the video being downloaded.

@@ -20,6 +20,7 @@ import urllib.parse
 
 from . import clips
 from . import command as cmdmod
+from . import hints
 from .binaries import CREATE_NO_WINDOW, IS_WINDOWS
 from .engine import RE_PROGRESS
 from .streamproxy import Target, Upstream
@@ -191,7 +192,7 @@ class Previews:
             clips.check_clippable(info)
         except clips.ClipError as exc:
             self.close(s.sid)
-            return {"error_key": exc.key} if exc.key else {"error": exc.detail}
+            return {"error_key": exc.key} if exc.key else {"error": exc.detail, "hint": hints.classify(exc.detail)}
         except Exception as exc:
             self.close(s.sid)
             return {"error": str(exc)}
