@@ -276,7 +276,7 @@ function renderSidebar() {
     h('div', { class: 'brand' }, html(LOGO),
       h('div', { class: 'brand__text' },
         h('div', { class: 'brand__name' }, 'Lasso'),
-        h('span', { class: 'brand__ver' }, 'v' + S.version + ' · yt-dlp'),
+        h('button', { class: 'brand__ver', type: 'button', title: T('hist.open'), onclick: openHistory }, 'v' + S.version + ' · yt-dlp'),
         S.ui.updSlot = h('div', { class: 'upd-slot' }))),
     nav,
     h('div', { class: 'sidebar__foot' }, bins, h('div', { class: 'prefs' }, themeSeg, h('div', { class: 'select select--sm' }, langSel))));
@@ -1174,6 +1174,7 @@ function renderField(f) {
           h('span', { class: 'row__label' }, T('upd.current', { v: S.version })),
           h('span', { class: 'row__tip' }, S.frozen ? T('upd.auto.tip') : T('upd.source'))),
         h('div', { class: 'row__ctrl' },
+          h('button', { class: 'btn', type: 'button', onclick: openHistory }, icon('clock'), T('hist.title')),
           h('button', { class: 'btn', type: 'button', onclick: checkUpdate }, icon('refresh'), T('upd.check'))));
     case 'command': {
       const pre = h('pre', { class: 'cmd' });
@@ -2558,12 +2559,14 @@ function showWhenFree(fn) {   // attend qu'aucune autre fenêtre ne soit ouverte
 
 // Notes de version GitHub (Markdown) en texte lisible.
 // Notes de version : une section par langue, titrée « ## FR · … », « ## EN · … ». On garde
-// celle de la langue de l'interface, sinon l'anglais, sinon le texte entier (anciennes notes).
+// celles de la langue de l'interface (« Nouveautés » puis « Corrections »...), sinon
+// l'anglais, sinon le texte entier (anciennes notes).
 function notesFor(md, lang) {
   const parts = String(md || '').replace(/\r/g, '').split(/^(?=##\s+[A-Z]{2}\s+·)/m);
-  const pick = code => parts.find(p => new RegExp('^##\\s+' + code + '\\s+·').test(p));
-  const part = pick(String(lang || '').slice(0, 2).toUpperCase()) || pick('EN');
-  return part ? part.replace(/^##\s+[A-Z]{2}\s+·\s*/, '## ') : md;
+  const of = code => parts.filter(p => new RegExp('^##\\s+' + code + '\\s+·').test(p));
+  const mine = of(String(lang || '').slice(0, 2).toUpperCase());
+  const chosen = mine.length ? mine : of('EN');
+  return chosen.length ? chosen.map(p => p.replace(/^##\s+[A-Z]{2}\s+·\s*/, '## ').trim()).join('\n\n') : md;
 }
 function plainNotes(md) {
   return String(md || '')
@@ -2573,8 +2576,10 @@ function plainNotes(md) {
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/`([^`\n]+)`/g, '$1')
     .replace(/^\s*[*-]\s+/gm, '• ')
+    .replace(/\*([^*\n]+)\*/g, '$1')   // italique, une fois les puces converties
     .replace(/ by @\S+ in https:\/\/\S+/g, '')
     .replace(/^\s*Full Changelog\b.*$/gim, '')
+    .replace(/^\s*Free code signing\b.*$/gim, '')
     .replace(/https:\/\/github\.com\/\S+/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -2589,6 +2594,40 @@ async function checkUpdate() {
   S.update = Object.assign({ state: 'new' }, r);
   updateUpdChip();
   openUpdate(S.update);
+}
+
+// Notes de plusieurs versions, la plus récente d'abord : nouveautés après une mise à jour
+// (une fois, au premier lancement) et historique (clic sur le numéro de version).
+const RELEASES_PAGE = 'https://github.com/Kronys256/lasso-video-downloader/releases';
+function fmtDate(d) {
+  try { return new Date(d + 'T12:00:00').toLocaleDateString(S.lang, { day: 'numeric', month: 'long', year: 'numeric' }); }
+  catch (e) { return d; }
+}
+function newsList(versions) {
+  return h('div', { class: 'news' }, versions.map(r => h('section', { class: 'news__ver' },
+    h('h3', null, T('news.version', { v: r.version }), r.date ? h('span', { class: 'news__date' }, fmtDate(r.date)) : null),
+    h('div', { class: 'news__text' }, plainNotes(notesFor(r.notes, S.lang)) || '—'))));
+}
+function newsFoot(m) {
+  return [h('button', { class: 'btn', type: 'button', onclick: () => call('open_url', RELEASES_PAGE) }, icon('external'), T('news.all')),
+    h('div', { class: 'spacer' }),
+    h('button', { class: 'btn btn--primary', type: 'button', onclick: () => m.close() }, T('dlg.ok'))];
+}
+function openNews(versions) {
+  const foot = h('div', { style: 'display:contents' });
+  const m = modal({ title: T('new.title'), ic: 'sparkles', size: 'news', foot,
+    body: [h('p', { class: 'dialog__msg' }, T('new.intro', { v: S.version })), newsList(versions)] });
+  foot.replaceChildren(...newsFoot(m));
+}
+async function openHistory() {
+  const holder = h('div', { style: 'display:contents' }, h('div', { class: 'loading' }, h('div', { class: 'orbit' }), T('hist.loading')));
+  const foot = h('div', { style: 'display:contents' });
+  const m = modal({ title: T('hist.title'), ic: 'clock', size: 'news', body: holder, foot });
+  foot.replaceChildren(...newsFoot(m));
+  const r = await call('version_history');
+  if (!S.modals.includes(m)) return;
+  holder.replaceChildren(r && r.versions && r.versions.length ? newsList(r.versions)
+    : h('p', { class: 'dialog__msg' }, T('hist.failed')));
 }
 
 function openUpdate(u) {
@@ -2797,6 +2836,9 @@ function onEvent(ev) {
       if (ev.errors) toast(T('msg.queueerrors', { n: ev.errors }), 'bad', 6000);
       else toast(T('msg.queuedone'), 'ok', 5000);
       hintSeen.clear();   // la prochaine file pourra de nouveau ouvrir chaque conseil
+      break;
+    case 'whats_new':
+      showWhenFree(() => openNews(ev.versions));
       break;
     case 'hint':
       queueHint(ev.key, ev.detail);

@@ -30,6 +30,8 @@ from .binaries import CREATE_NO_WINDOW, IS_WINDOWS, app_dir
 REPO = "Kronys256/lasso-video-downloader"
 # YTDL_UPDATE_URL remplace l'adresse de l'API (tests avec un faux serveur de releases).
 API_URL = os.environ.get("YTDL_UPDATE_URL") or "https://api.github.com/repos/%s/releases/latest" % REPO
+RELEASES_URL = "https://api.github.com/repos/%s/releases?per_page=100" % REPO
+RELEASES_PAGE = "https://github.com/%s/releases" % REPO
 SUMS = "SHA256SUMS.txt"
 # L'archive (<nom>-windows.zip, <nom>-linux.tar.gz), son dossier racine et l'exécutable
 # portent le nom de l'application : "Lasso" à partir de la 1.7, "YTDL-Interface" avant.
@@ -72,6 +74,25 @@ def latest_release():
         "size": asset.get("size"),
         "sums_url": (assets.get(SUMS) or {}).get("browser_download_url"),
     }
+
+
+def release_notes(lowest, highest=None, include_lowest=False):
+    """Notes des versions publiées au-dessus de `lowest` (comprise si include_lowest) et
+    jusqu'à `highest` (comprise ; None : sans limite), la plus récente d'abord. Avec
+    `lowest` à None, seulement `highest`. Nouveautés après une mise à jour et historique."""
+    with _open(RELEASES_URL) as resp:
+        data = json.load(resp)
+    lo, hi = parse_version(lowest), parse_version(highest)
+    found = []
+    for rel in data:
+        v = parse_version(rel.get("tag_name"))
+        if not v or rel.get("draft") or rel.get("prerelease"):
+            continue
+        above = v == hi if lo is None else (v >= lo if include_lowest else v > lo)
+        if above and (hi is None or v <= hi):
+            found.append((v, {"version": "%d.%d.%d" % v, "date": (rel.get("published_at") or "")[:10],
+                              "notes": rel.get("body") or ""}))
+    return [entry for _, entry in sorted(found, key=lambda x: x[0], reverse=True)]
 
 
 def frozen():

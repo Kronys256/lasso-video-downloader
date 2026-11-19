@@ -204,6 +204,10 @@ class Api:
         self._maximized = bool(stored.get("_maximized", False))
         self._update_checked = float(stored.get("_update_checked") or 0)
         self._updated_to = str(stored.get("_updated_to") or "")
+        # Dernière version lancée, et version après laquelle montrer les nouveautés (gardée
+        # tant qu'elles n'ont pas pu être récupérées, hors ligne par exemple)
+        self._last_version = str(stored.get("_last_version") or "")
+        self._news_from = str(stored.get("_news_from") or "")
         i18n.set_lang(self._settings["ui_lang"])
 
         self._q = queue.Queue()
@@ -279,6 +283,9 @@ class Api:
         data["_update_checked"] = self._update_checked
         if self._updated_to:
             data["_updated_to"] = self._updated_to
+        data["_last_version"] = self._last_version
+        if self._news_from:
+            data["_news_from"] = self._news_from
         save_settings(self._dir, data)
 
     def _push(self, event):
@@ -297,6 +304,15 @@ class Api:
             updated = __version__ if self._updated_to == __version__ else ""
             self._updated_to = ""
             self._save()
+        if self._last_version != __version__:
+            if self._last_version and updater.is_newer(__version__, self._last_version):
+                self._news_from = self._last_version
+            elif not self._last_version and updated:
+                self._news_from = "*"   # venu d'une version qui ne notait pas la sienne : celle-ci seule
+            self._last_version = __version__
+            self._save()
+        if self._news_from:
+            threading.Thread(target=self._fetch_news, daemon=True).start()
         self._auto_update_check()
         return {
             "version": __version__,
@@ -381,6 +397,28 @@ class Api:
                 self._update_busy = False
         threading.Thread(target=worker, daemon=True).start()
         return True
+
+    def _fetch_news(self):
+        """Nouveautés des versions installées depuis le dernier lancement, la plus récente
+        d'abord : la page les montre une fois."""
+        start = None if self._news_from == "*" else self._news_from
+        try:
+            versions = updater.release_notes(start, __version__)
+        except Exception:
+            return   # hors ligne : nouvel essai au prochain lancement
+        self._news_from = ""
+        self._save()
+        if versions:
+            self._push({"type": "whats_new", "versions": versions})
+
+    def version_history(self):
+        """Notes de toutes les versions depuis la 2.0.0 (fenêtre d'historique). Lancée depuis
+        les sources, l'application porte un numéro fixe : pas de limite haute."""
+        try:
+            return {"versions": updater.release_notes("2.0.0", __version__ if updater.frozen() else None,
+                                                       include_lowest=True)}
+        except Exception as exc:
+            return {"error": str(exc)}
 
     def update_restart(self):
         """Ferme l'application et laisse le script de mise à jour la remplacer et la relancer."""
