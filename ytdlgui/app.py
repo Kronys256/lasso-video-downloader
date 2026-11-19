@@ -66,6 +66,8 @@ LOG_KEEP = 5000
 # Erreur « connexion requise » de yt-dlp, quel que soit le site (Reddit, Instagram, YouTube
 # « not a bot » ou limite d'âge) : son conseil cite toujours --cookies.
 RE_LOGIN = re.compile(r"^ERROR: .*--cookies")
+# Navigateur basé sur Chromium encore ouvert : sous Windows, il verrouille sa base de cookies.
+RE_COOKIE_LOCK = re.compile(r"^ERROR: Could not copy Chrome cookie database")
 
 
 def default_settings(base_dir):
@@ -756,7 +758,7 @@ class Api:
 
     # ---------------------------------------------------------- suivi (appelé en boucle par la page)
     def poll(self):
-        log, disk, dirty, finished, login = [], [], False, False, False
+        log, disk, dirty, finished, login, locked = [], [], False, False, False, False
         try:
             while len(log) < 2000:
                 event = self._q.get_nowait()
@@ -766,6 +768,7 @@ class Api:
                     if kind == "log":
                         log.append(disk[-1])
                         login = login or bool(RE_LOGIN.match(event[2]))
+                        locked = locked or bool(RE_COOKIE_LOCK.match(event[2]))
                 elif kind in ("status", "progress", "title"):
                     dirty = True
                 elif kind == "done":
@@ -776,8 +779,8 @@ class Api:
             self._log.extend(log)
         if disk:
             journal.write(disk)
-        if login:
-            self._push({"type": "login_required"})
+        if locked or login:
+            self._push({"type": "cookies_locked" if locked else "login_required"})
         if finished:
             self._check_queue_done()
         with self._lock:

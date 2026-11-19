@@ -900,6 +900,7 @@ async function retryJobs(ids) {
 
 // ------------------------------------------------------------------ pages de réglages
 const opt = (v, l) => [v, l];
+const browserName = b => b === 'operagx' ? 'Opera GX' : b.charAt(0).toUpperCase() + b.slice(1);
 const PAGES = [
   { id: 'format', title: 'tab.format', intro: 'fmt.intro', sections: [
     { title: 'fmt.type', fields: [
@@ -984,7 +985,8 @@ const PAGES = [
       { type: 'toggle', name: 'geo_bypass', label: 'net.geo', tip: 'net.geo.tip' }] },
     { title: 'net.accounts', help: 'net.accounts.help', fields: [
       { type: 'select', name: 'cookies_browser', label: 'net.cookiesbrowser', tip: 'net.cookiesbrowser.tip',
-        options: [opt('', () => T('cb.none')), 'firefox', 'chrome', 'edge', 'brave', 'opera', opt('operagx', 'Opera GX'), 'vivaldi', 'chromium'] },
+        options: [opt('', () => T('cb.none')),
+          ...['firefox', 'chrome', 'edge', 'brave', 'opera', 'operagx', 'vivaldi', 'chromium'].map(b => opt(b, browserName(b)))] },
       { type: 'path', name: 'cookies_file', label: 'net.cookiesfile', tip: 'net.cookiesfile.tip', browse: 'file', when: s => !s.cookies_browser },
       { type: 'text', name: 'username', label: 'net.user', tip: 'net.user.tip', width: 'm' },
       { type: 'text', name: 'password', label: 'net.pass', tip: 'net.pass.tip', width: 'm', secret: true }] },
@@ -2462,20 +2464,22 @@ function openShortcutPrompt() {
   });
 }
 
-// Le site exige une connexion (cf. RE_LOGIN dans app.py) : le remède est presque toujours
-// les cookies du navigateur. Une seule fenêtre à la fois, même si plusieurs tâches échouent.
-function openLoginHint() {
-  if (S.loginHint) return;
-  S.loginHint = true;
+// Conseil après une erreur de cookies (cf. RE_LOGIN et RE_COOKIE_LOCK dans app.py) : le site
+// exige une connexion (login_required), ou le navigateur ouvert bloque ses cookies
+// (cookies_locked). Une seule fenêtre à la fois, même si plusieurs tâches échouent.
+function openCookieHint(kind) {
+  if (S.cookieHint) return;
+  S.cookieHint = true;
   const b = S.settings.cookies_browser;
+  const msg = kind === 'cookies_locked' ? T('lock.msg', { browser: b ? browserName(b) : '?', none: L('cb.none') })
+    : b ? T('login.msg.set', { browser: browserName(b) }) : T('login.msg');
   const m = modal({
-    title: T('login.title'), ic: 'cookie', kind: 'warn',
-    body: h('p', { class: 'dialog__msg' },
-      b ? T('login.msg.set', { browser: b === 'operagx' ? 'Opera GX' : b.charAt(0).toUpperCase() + b.slice(1) }) : T('login.msg')),
+    title: T(kind === 'cookies_locked' ? 'lock.title' : 'login.title'), ic: 'cookie', kind: 'warn',
+    body: h('p', { class: 'dialog__msg' }, msg),
     foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, T('dlg.ok')),
       h('button', { class: 'btn btn--primary', type: 'button', onclick: () => { m.close(); go('network'); } },
         icon('cookie'), T('login.open'))],
-    onClose: () => { S.loginHint = false; },
+    onClose: () => { S.cookieHint = false; },
   });
 }
 
@@ -2724,8 +2728,8 @@ function onEvent(ev) {
       if (ev.errors) toast(T('msg.queueerrors', { n: ev.errors }), 'bad', 6000);
       else toast(T('msg.queuedone'), 'ok', 5000);
       break;
-    case 'login_required':
-      openLoginHint();
+    case 'login_required': case 'cookies_locked':
+      openCookieHint(ev.type);
       break;
     case 'preview_progress': case 'preview_ready': case 'preview_failed': case 'preview_estimate':
       onPreviewEvent(ev);
